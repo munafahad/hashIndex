@@ -18,7 +18,28 @@ class HashBucketPage extends SortedPage {
    */
   public int countEntries() {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  int count = 0;
+	  
+	  //1. get primary page entry count: SortedPage.getEntryCount
+	   count += getEntryCount();
+	  
+	  //2. count entries in next pages if any: SortedPage.getNextPage >> NEXT_PAGE = 4;
+	  PageId pageId = getNextPage();
+	  SortedPage nextPage = new SortedPage();
+	  
+	  while(pageId.pid != INVALID_PAGEID) {
+		  
+		  //pin and count entries
+		  Minibase.BufferManager.pinPage(pageId, nextPage, PIN_DISKIO);
+		  count += nextPage.getEntryCount();
+		  
+		  //move to next page
+		  PageId nextPageId = nextPage.getNextPage();
+		  Minibase.BufferManager.unpinPage(pageId, UNPIN_CLEAN);
+		  pageId = nextPageId;
+	  }
+	  
+	  return count;
 
   } // public int countEntries()
 
@@ -35,7 +56,34 @@ class HashBucketPage extends SortedPage {
    */
   public boolean insertEntry(DataEntry entry) {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  //1. try to insert an entry into the primary page
+	  try {
+		  super.insertEntry(entry);
+		  return true;
+	  }
+	  //2.1 try to insert in later pages of the list 
+	  //OR 2.2 create a new page and insert the data entry into it
+	  catch(IllegalStateException ex) {
+		  
+		  PageId nextPageId = getNextPage();
+		  
+		  //HashBucketPage object NOT SortedPage object as we can ignore the sorted order
+		  HashBucketPage nextPage = new HashBucketPage();
+		  
+	      if (nextPageId.pid != INVALID_PAGEID)
+	      {
+	        Minibase.BufferManager.pinPage(nextPageId, nextPage, PIN_DISKIO);
+	        boolean dirty = nextPage.insertEntry(entry);
+	        Minibase.BufferManager.unpinPage(nextPageId, dirty);
+	        return false;
+	      }
+	      //New page and add the data entry to it 
+	      nextPageId = Minibase.BufferManager.newPage(nextPage, 1);
+	      setNextPage(nextPageId);
+	      boolean dirty = nextPage.insertEntry(entry);
+	      Minibase.BufferManager.unpinPage(nextPageId, dirty);
+	      return true;
+	  }	 
 
   } // public boolean insertEntry(DataEntry entry)
 
@@ -51,7 +99,41 @@ class HashBucketPage extends SortedPage {
    */
   public boolean deleteEntry(DataEntry entry) {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  //1. try to delete the data entry from the primary page
+	  try {
+		  super.deleteEntry(entry);
+		  return true;
+	  }
+	  //2. if the entry does not exist in the primary page ==> check next pages in the list
+	  catch(IllegalArgumentException ex) {
+
+		  PageId nextPageId = getNextPage();
+		  
+	      HashBucketPage nextPage = new HashBucketPage();
+		  
+	      if (nextPageId.pid != INVALID_PAGEID)
+	      {
+	        Minibase.BufferManager.pinPage(nextPageId, nextPage, PIN_DISKIO);
+	        boolean dirty = nextPage.deleteEntry(entry);
+
+
+	        //check if the page is empty to delete it and set the next page
+	        if (nextPage.getEntryCount() < 1)
+	        {
+	          setNextPage(nextPage.getNextPage());
+	          Minibase.BufferManager.unpinPage(nextPageId, dirty);
+	          Minibase.BufferManager.freePage(nextPageId);
+	          return true;
+	        } else {
+	        	Minibase.BufferManager.unpinPage(nextPageId, dirty);
+	 	        return false;
+	        }
+	       
+	      }
+	      
+	      throw ex;
+	  }
+
 
   } // public boolean deleteEntry(DataEntry entry)
 

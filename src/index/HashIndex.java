@@ -36,7 +36,27 @@ public class HashIndex implements GlobalConst {
    */
   public HashIndex(String fileName) {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  this.fileName=fileName;
+	  
+	  //1. check fileName
+	  //2.1 get the index file if it is exist by setting the headId
+	  boolean exist = false;
+	  
+	  if(fileName != null) {
+		  headId = Minibase.DiskManager.get_file_entry(fileName);
+		  if(headId != null)
+			  exist = true;  
+	  } 
+	  //2.2 create a new index file if the file with the provided name does not exist 
+	  if(!exist){
+		  HashDirPage hDirPage = new HashDirPage();
+		  headId = Minibase.BufferManager.newPage(hDirPage, 1);
+		  Minibase.BufferManager.unpinPage(headId, UNPIN_DIRTY);
+		  
+		  if(fileName!=null){
+			  Minibase.DiskManager.add_file_entry(fileName, headId);
+		  }
+	  }
 
   } // public HashIndex(String fileName)
 
@@ -46,7 +66,8 @@ public class HashIndex implements GlobalConst {
    */
   protected void finalize() throws Throwable {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  if (fileName==null)
+		  deleteFile();
 
   } // protected void finalize() throws Throwable
 
@@ -54,8 +75,47 @@ public class HashIndex implements GlobalConst {
    * Deletes the index file from the database, freeing all of its pages.
    */
   public void deleteFile() {
-
-	  throw new UnsupportedOperationException("Not implemented");
+	  
+	  //PageId, HashDirPage, and HashBucketPage objects
+	  PageId dirId = new PageId(headId.pid);
+	  HashDirPage hDirPage = new HashDirPage();
+	  HashBucketPage hBucketPage = new HashBucketPage();
+	  
+	  //1. delete pages
+	  while (dirId.pid != INVALID_PAGEID) {
+		  
+		  Minibase.BufferManager.pinPage(dirId, hDirPage, PIN_DISKIO);
+ 
+		  //loop through the hashDirPages
+		  int count = hDirPage.getEntryCount();
+		  for (int i = 0 ; i < count ; ++i) {
+			  PageId dataId = hDirPage.getPageId(i);
+			  
+			  //loop through the HashBucketPage AND 
+			  //deallocate all pages in the bucket
+			  while(dataId.pid != INVALID_PAGEID) {
+				  
+				  Minibase.BufferManager.pinPage(dataId, hBucketPage, PIN_DISKIO);
+				  PageId nextPageId = hBucketPage.getNextPage();
+				  Minibase.BufferManager.unpinPage(dataId, UNPIN_CLEAN);
+				  Minibase.BufferManager.freePage(dataId);
+				  dataId = nextPageId;
+			  }
+		  }
+		  
+		  //2. deallocate the Page from the hash directory and move to next page
+		  PageId nextPageId = hDirPage.getNextPage();
+		  
+		  Minibase.BufferManager.unpinPage(dirId, UNPIN_CLEAN);
+		  Minibase.BufferManager .freePage(dirId);
+		  
+		  dirId = nextPageId;
+	  }
+	  
+	  //3. delete the index file from the library
+	  if (fileName!=null){
+		  Minibase.DiskManager.delete_file_entry(fileName);
+	  }
 
   } // public void deleteFile()
 
@@ -66,8 +126,39 @@ public class HashIndex implements GlobalConst {
    */
   public void insertEntry(SearchKey key, RID rid) {
 
-	  throw new UnsupportedOperationException("Not implemented");
-
+	  //1.data entry checking
+	  DataEntry entry = new DataEntry (key, rid);
+	  
+	  if (entry.getLength() > SortedPage.MAX_ENTRY_SIZE){
+		  throw new IllegalArgumentException("The data entry is too large!");
+	  }
+	  
+	  PageId dirPageId = new PageId(headId.pid);
+	  HashDirPage hDirPage = new HashDirPage();
+	  HashBucketPage hdataPage = new HashBucketPage();
+	  
+	  int hashValue = key.getHash(DEPTH);
+	  
+	  
+	  Minibase.BufferManager.pinPage(dirPageId, hDirPage, PIN_DISKIO); 
+	  
+	  
+	  PageId dataId = hDirPage.getPageId(hashValue);
+	  
+	  //2. insert to exist pageId or create a new one and insert the record to it
+	  if (dataId.pid != INVALID_PAGEID){
+		  Minibase.BufferManager.pinPage(dataId, hdataPage, PIN_DISKIO);
+		  Minibase.BufferManager.unpinPage(dirPageId, UNPIN_CLEAN);
+		  
+	  } else {
+		  dataId = Minibase.BufferManager.newPage(hdataPage, 1);
+		  hDirPage.setPageId(hashValue, dataId);
+		  Minibase.BufferManager.unpinPage(dirPageId, UNPIN_DIRTY);
+	  }
+	  
+	  boolean dirty = hdataPage.insertEntry(entry);
+	  Minibase.BufferManager.unpinPage(dataId, dirty);
+	
   } // public void insertEntry(SearchKey key, RID rid)
 
   /**
@@ -77,8 +168,37 @@ public class HashIndex implements GlobalConst {
    */
   public void deleteEntry(SearchKey key, RID rid) {
 
-	  throw new UnsupportedOperationException("Not implemented");
-
+	  
+	  DataEntry entry = new DataEntry(key, rid);
+	  PageId dirId= new PageId(this.headId.pid);
+	  HashDirPage hDirPage = new HashDirPage();
+	  HashBucketPage hDataPage = new HashBucketPage();
+	  int hashValue = key.getHash(this.DEPTH);
+	  
+	  //1. get pageId from the HashDirPage
+	  Minibase.BufferManager.pinPage(dirId, hDirPage, PIN_DISKIO);
+	  PageId dataId = hDirPage.getPageId(hashValue);
+	  Minibase.BufferManager.unpinPage(dirId, UNPIN_CLEAN);
+	  
+	  
+	  //2. check pageId and delete or throw an exception
+	  if (dataId.pid != INVALID_PAGEID){
+		  
+		  Minibase.BufferManager.pinPage(dataId, hDataPage, PIN_DISKIO);
+		  try {
+			  boolean dirty = hDataPage.deleteEntry(entry);
+			  Minibase.BufferManager.unpinPage(dataId, dirty);
+		  } catch(IllegalArgumentException exc) {
+			  Minibase.BufferManager.unpinPage(dataId, UNPIN_CLEAN);
+			  throw exc;
+		  }
+		  
+	  } else {
+		  throw new IllegalArgumentException("The entry does not exist!");
+	  }
+	  
+	  
+	  
   } // public void deleteEntry(SearchKey key, RID rid)
 
   /**
@@ -113,7 +233,60 @@ public class HashIndex implements GlobalConst {
    */
   public void printSummary() {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  String name = "temp file";
+	  if(fileName != null) 
+		  name = this.fileName;
+	  
+	  System.out.println(name);
+	  
+	  for (int i = 0; i < name.length(); ++i){
+		  System.out.print("-");		  
+	  }
+	  System.out.println();
+	  
+	  
+	  int total = 0;
+	  
+	  PageId dirId = new PageId(headId.pid);
+	  HashDirPage dirPage = new HashDirPage();
+	  HashBucketPage dataPage = new HashBucketPage();
+	  
+	  while (dirId.pid != INVALID_PAGEID) {
+		  Minibase.BufferManager.pinPage(dirId, dirPage, PIN_DISKIO);
+		  
+		  int count = dirPage.getEntryCount();
+		  for (int i = 0 ; i < count ; ++i){
+			  String hash = Integer.toString(i,2);
+			  for (int j=0 ; j < DEPTH - hash.length() ; ++j){
+				  System.out.print('0');
+			  }
+			  System.out.print(hash + " : ");
+			  
+			  PageId dataId = dirPage.getPageId(i);
+			  
+			  if (dataId.pid != INVALID_PAGEID) {
+				  Minibase.BufferManager.pinPage(dataId, dataPage, PIN_DISKIO);
+				  int bkcnt = dataPage.countEntries();
+				  System.out.println(bkcnt);
+				  total += bkcnt;
+				  Minibase.BufferManager.unpinPage(dataId, UNPIN_CLEAN);		  
+			  } else {
+				  System.out.println("null");
+			  }
+		  }
+		  
+		  PageId nextId = dirPage.getNextPage();
+		  Minibase.BufferManager.unpinPage(dirId, UNPIN_CLEAN);
+		  dirId = nextId;
+		  
+	  }
+	  
+	  for (int i = 0 ; i < name.length() ; ++i) {
+		  System.out.print('-');
+	  }
+	  
+	  System.out.println();
+	  System.out.println("Total : "+ total);
 
   } // public void printSummary()
 

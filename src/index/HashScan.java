@@ -31,8 +31,35 @@ public class HashScan implements GlobalConst {
    */
   protected HashScan(HashIndex index, SearchKey key) {
 
-	  throw new UnsupportedOperationException("Not implemented");
-
+	  this.key = new SearchKey(key);
+	  PageId dirPageId = new PageId(index.headId.pid);
+	  HashDirPage dirPage = new HashDirPage();
+	  //hashValue: to find the directory page
+	  int hashValue = key.getHash(index.DEPTH);
+	  
+	  
+	  for(; hashValue >= HashDirPage.MAX_ENTRIES ; hashValue -= HashDirPage.MAX_ENTRIES) {
+		  
+		  Minibase.BufferManager.pinPage(dirPageId, dirPage, PIN_DISKIO);
+	      PageId nextPageId = dirPage.getNextPage();
+	      Minibase.BufferManager.unpinPage(dirPageId, UNPIN_CLEAN);
+	      
+	      dirPageId = nextPageId;
+	  }
+	  
+	  //hash value < max entries, this page should be the needed directory page
+	  Minibase.BufferManager.pinPage(dirPageId, dirPage, PIN_DISKIO);
+	  
+	  //Get the first page id of bucket page 
+	  curPageId = dirPage.getPageId(hashValue);
+	  Minibase.BufferManager.unpinPage(dirPageId, UNPIN_CLEAN);
+	  curPage = new HashBucketPage();
+	  
+	  if(curPageId.pid != INVALID_PAGEID) {
+		  Minibase.BufferManager.pinPage(curPageId, curPage, PIN_DISKIO);
+	      this.curSlot = EMPTY_SLOT;
+	  }
+	  	  
   } // protected HashScan(HashIndex index, SearchKey key)
 
   /**
@@ -41,7 +68,8 @@ public class HashScan implements GlobalConst {
    */
   protected void finalize() throws Throwable {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  if(curPageId.pid != INVALID_PAGEID) 
+		  close();
 
   } // protected void finalize() throws Throwable
 
@@ -50,7 +78,10 @@ public class HashScan implements GlobalConst {
    */
   public void close() {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  if (curPageId.pid != INVALID_PAGEID) {
+	      Minibase.BufferManager.unpinPage(curPageId, UNPIN_CLEAN);
+	      curPageId.pid = INVALID_PAGEID;
+	  }
 
   } // public void close()
 
@@ -61,8 +92,29 @@ public class HashScan implements GlobalConst {
    */
   public RID getNext() {
 
-	  throw new UnsupportedOperationException("Not implemented");
+	  RID rid = null;
+	  
+	  while (curPageId.pid != INVALID_PAGEID) {
+	      
+		  //get curSlot to start the scan from it
+		  curSlot = curPage.nextEntry(key, curSlot);
 
+	      if (curSlot < 0) {
+	    	  
+	        PageId nextPageId = curPage.getNextPage();
+	        Minibase.BufferManager.unpinPage(curPageId, UNPIN_CLEAN);
+	        curPageId = nextPageId;
+	        
+	        if (curPageId.pid != INVALID_PAGEID)
+	          Minibase.BufferManager.pinPage(curPageId, curPage, PIN_DISKIO);
+	        
+	      } else {
+              rid = new RID(curPage.getEntryAt(curSlot).rid);
+              break;
+          }
+	    }
+	
+	  return rid;
   } // public RID getNext()
 
 } // public class HashScan implements GlobalConst

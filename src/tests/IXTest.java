@@ -76,6 +76,7 @@ class IXTest extends TestDriver {
       temp.insertEntry(key, rid);
     }
 
+    temp.printSummary();
     //Generate the same 10 keys and hope the same data
     //entries are retrieved.
     initRandom();
@@ -144,6 +145,8 @@ class IXTest extends TestDriver {
 
       } // for
 
+      //index.printSummary();
+      
       initRandom();
 
       System.out.println("\n  ~> scanning every other entry...");
