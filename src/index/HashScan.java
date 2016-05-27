@@ -33,31 +33,21 @@ public class HashScan implements GlobalConst {
 
 	  this.key = new SearchKey(key);
 	  PageId dirPageId = new PageId(index.headId.pid);
-	  HashDirPage dirPage = new HashDirPage();
-	  //hashValue: to find the directory page
+	  HashDirPage hDirPage = new HashDirPage();
+	  
+	  //hashValue: to find the hash directory page
 	  int hashValue = key.getHash(index.DEPTH);
-	  
-	  
-	  for(; hashValue >= HashDirPage.MAX_ENTRIES ; hashValue -= HashDirPage.MAX_ENTRIES) {
-		  
-		  Minibase.BufferManager.pinPage(dirPageId, dirPage, PIN_DISKIO);
-	      PageId nextPageId = dirPage.getNextPage();
-	      Minibase.BufferManager.unpinPage(dirPageId, UNPIN_CLEAN);
-	      
-	      dirPageId = nextPageId;
-	  }
-	  
-	  //hash value < max entries, this page should be the needed directory page
-	  Minibase.BufferManager.pinPage(dirPageId, dirPage, PIN_DISKIO);
+
+	  Minibase.BufferManager.pinPage(dirPageId, hDirPage, PIN_DISKIO);
 	  
 	  //Get the first page id of bucket page 
-	  curPageId = dirPage.getPageId(hashValue);
+	  curPageId = hDirPage.getPageId(hashValue);
 	  Minibase.BufferManager.unpinPage(dirPageId, UNPIN_CLEAN);
 	  curPage = new HashBucketPage();
 	  
 	  if(curPageId.pid != INVALID_PAGEID) {
 		  Minibase.BufferManager.pinPage(curPageId, curPage, PIN_DISKIO);
-	      this.curSlot = EMPTY_SLOT;
+	      //this.curSlot = EMPTY_SLOT;
 	  }
 	  	  
   } // protected HashScan(HashIndex index, SearchKey key)

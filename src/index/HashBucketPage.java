@@ -66,8 +66,6 @@ class HashBucketPage extends SortedPage {
 	  catch(IllegalStateException ex) {
 		  
 		  PageId nextPageId = getNextPage();
-		  
-		  //HashBucketPage object NOT SortedPage object as we can ignore the sorted order
 		  HashBucketPage nextPage = new HashBucketPage();
 		  
 	      if (nextPageId.pid != INVALID_PAGEID)
@@ -77,7 +75,7 @@ class HashBucketPage extends SortedPage {
 	        Minibase.BufferManager.unpinPage(nextPageId, dirty);
 	        return false;
 	      }
-	      //New page and add the data entry to it 
+	      //create a new page and add the data entry to it 
 	      nextPageId = Minibase.BufferManager.newPage(nextPage, 1);
 	      setNextPage(nextPageId);
 	      boolean dirty = nextPage.insertEntry(entry);
@@ -104,11 +102,11 @@ class HashBucketPage extends SortedPage {
 		  super.deleteEntry(entry);
 		  return true;
 	  }
-	  //2. if the entry does not exist in the primary page ==> check next pages in the list
+	  //2. if the entry does not exist in the primary page 
+	  //==> check next pages in the list
 	  catch(IllegalArgumentException ex) {
 
 		  PageId nextPageId = getNextPage();
-		  
 	      HashBucketPage nextPage = new HashBucketPage();
 		  
 	      if (nextPageId.pid != INVALID_PAGEID)
@@ -117,7 +115,7 @@ class HashBucketPage extends SortedPage {
 	        boolean dirty = nextPage.deleteEntry(entry);
 
 
-	        //check if the page is empty to delete it and set the next page
+	        //check if the page is empty to 1.delete it and 2.set the next page
 	        if (nextPage.getEntryCount() < 1)
 	        {
 	          setNextPage(nextPage.getNextPage());

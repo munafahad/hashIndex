@@ -71,12 +71,13 @@ class IXTest extends TestDriver {
     initRandom();
     HashIndex temp = new HashIndex(null);
     for (int i = 0; i < 10; i++) {
-      SearchKey key = randKey(1);  //
+      SearchKey key = randKey(1);  
       RID rid = new RID(new PageId(i), 0);
       temp.insertEntry(key, rid);
     }
 
-    temp.printSummary();
+    //temp.printSummary();
+    
     //Generate the same 10 keys and hope the same data
     //entries are retrieved.
     initRandom();
