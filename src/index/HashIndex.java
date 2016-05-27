@@ -53,6 +53,7 @@ public class HashIndex implements GlobalConst {
 		  headId = Minibase.BufferManager.newPage(hDirPage, 1);
 		  Minibase.BufferManager.unpinPage(headId, UNPIN_DIRTY);
 		  
+		  //add the index file to the library
 		  if(fileName!=null){
 			  Minibase.DiskManager.add_file_entry(fileName, headId);
 		  }
@@ -79,7 +80,7 @@ public class HashIndex implements GlobalConst {
 	  //PageId, HashDirPage, and HashBucketPage objects
 	  PageId dirId = new PageId(headId.pid);
 	  HashDirPage hDirPage = new HashDirPage();
-	  HashBucketPage hBucketPage = new HashBucketPage();
+	  SortedPage hBucketPage = new SortedPage();
 	  
 	  //1. delete pages
 	  while (dirId.pid != INVALID_PAGEID) {
@@ -91,7 +92,7 @@ public class HashIndex implements GlobalConst {
 		  for (int i = 0 ; i < count ; ++i) {
 			  PageId dataId = hDirPage.getPageId(i);
 			  
-			  //loop through the HashBucketPage AND 
+			  //loop through the (HashBucketPage\sorted pages) AND 
 			  //deallocate all pages in the bucket
 			  while(dataId.pid != INVALID_PAGEID) {
 				  
@@ -139,10 +140,16 @@ public class HashIndex implements GlobalConst {
 	  
 	  int hashValue = key.getHash(DEPTH);
 	  
-	  
+	  //to check and use correct hash value
+	  for (; hashValue >= HashDirPage.MAX_ENTRIES ; hashValue -= HashDirPage.MAX_ENTRIES){
+		  Minibase.BufferManager.pinPage(dirPageId, hdataPage, PIN_DISKIO);
+		  PageId nextId = hdataPage.getNextPage();
+		  Minibase.BufferManager.unpinPage(dirPageId, UNPIN_CLEAN);
+		  dirPageId = nextId;
+		  
+	  }
 	  Minibase.BufferManager.pinPage(dirPageId, hDirPage, PIN_DISKIO); 
-	  
-	  
+	    
 	  PageId dataId = hDirPage.getPageId(hashValue);
 	  
 	  //2. insert to exist pageId or create a new one and insert the record to it
@@ -170,10 +177,19 @@ public class HashIndex implements GlobalConst {
 
 	  
 	  DataEntry entry = new DataEntry(key, rid);
-	  PageId dirId= new PageId(this.headId.pid);
+	  PageId dirId= new PageId(headId.pid);
 	  HashDirPage hDirPage = new HashDirPage();
 	  HashBucketPage hDataPage = new HashBucketPage();
-	  int hashValue = key.getHash(this.DEPTH);
+	  int hashValue = key.getHash(DEPTH);
+	  
+	  //check the correctness of hashValue
+	  while (hashValue >= HashDirPage.MAX_ENTRIES){
+		  Minibase.BufferManager.pinPage(dirId, hDirPage, PIN_DISKIO);
+		  PageId nextId = hDirPage.getNextPage();
+		  Minibase.BufferManager.unpinPage(dirId, UNPIN_CLEAN);
+		  dirId = nextId;
+		  hashValue -= HashDirPage.MAX_ENTRIES;
+	  }
 	  
 	  //1. get pageId from the HashDirPage
 	  Minibase.BufferManager.pinPage(dirId, hDirPage, PIN_DISKIO);
